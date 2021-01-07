@@ -1,4 +1,4 @@
-// Copyright 2017-2020 Authors of Cilium
+// Copyright 2017-2021 Authors of Cilium
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ var _ = Describe("K8sServicesTest", func() {
 		var err error
 		kubectl = helpers.CreateKubectl(helpers.K8s1VMName(), logger)
 
-		if helpers.DualStackSupported() && helpers.RunsWithKubeProxy() {
+		if helpers.DualStackSupported() && helpers.RunsWithoutKubeProxyReplacement() {
 			// This is a fix required for kube-proxy when running in dual-stack mode.
 			// Sometimes there is a condition where kube-proxy repeatedly fails as it is not able
 			// to find KUBE-MARK-DROP iptables chain for IPv6 which should be created by kubelet.
@@ -133,7 +133,9 @@ var _ = Describe("K8sServicesTest", func() {
 
 	manualIPv6TestingNotRequired := func(f func() bool) func() bool {
 		return func() bool {
-			return helpers.DualStackSupported() || f()
+			// IPv6 tests do not work on Integrations like GKE as we don't have IPv6
+			// addresses assigned to nodes in those environments.
+			return helpers.DualStackSupported() || helpers.GetCurrentIntegration() != "" || f()
 		}
 	}
 
@@ -342,7 +344,7 @@ var _ = Describe("K8sServicesTest", func() {
 			}
 		})
 
-		SkipItIf(helpers.RunsWithoutKubeProxy, "Checks service on same node", func() {
+		SkipItIf(helpers.RunsWithKubeProxyReplacement, "Checks service on same node", func() {
 			serviceNames := []string{serviceName}
 			if helpers.DualStackSupported() {
 				serviceNames = append(serviceNames, serviceNameIPv6)
@@ -409,7 +411,7 @@ var _ = Describe("K8sServicesTest", func() {
 
 		}, 600)
 
-		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithKubeProxy), "IPv6 Connectivity", func() {
+		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithoutKubeProxyReplacement), "IPv6 Connectivity", func() {
 			// Because the deployed K8s does not have dual-stack mode enabled,
 			// we install the Cilium service rules manually via Cilium CLI.
 			demoClusterIPv6 := "fd03::100"
@@ -1596,7 +1598,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 				tftpURL = getTFTPLink(node.node1IP, data.Spec.Ports[1].NodePort)
 				k8sVersion := versioncheck.MustVersion(helpers.GetCurrentK8SEnv())
 				isSupported := versioncheck.MustCompile(">=1.15.0")
-				if helpers.RunsWithoutKubeProxy() || helpers.RunsWithKubeProxy() && isSupported(k8sVersion) {
+				if helpers.RunsWithKubeProxyReplacement() || isSupported(k8sVersion) {
 					testCurlFromPodInHostNetNS(httpURL, count, 0, k8s1NodeName)
 					testCurlFromPodInHostNetNS(tftpURL, count, 0, k8s1NodeName)
 				}
@@ -1761,7 +1763,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			)
 			// Destination address and port for fragmented datagram
 			// are not DNAT-ed with kube-proxy but without bpf_sock.
-			if helpers.RunsWithKubeProxy() {
+			if helpers.RunsWithoutKubeProxyReplacement() {
 				ciliumPodK8s1, err := kubectl.GetCiliumPodOnNode(helpers.K8s1)
 				ExpectWithOffset(1, err).Should(BeNil(), "Cannot get cilium pod on k8s1")
 				hasDNAT = kubectl.HasHostReachableServices(ciliumPodK8s1, false, true)
@@ -1832,7 +1834,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			}
 		}
 
-		SkipItIf(helpers.RunsWithoutKubeProxy, "Checks ClusterIP Connectivity", func() {
+		SkipItIf(helpers.RunsWithKubeProxyReplacement, "Checks ClusterIP Connectivity", func() {
 			services := []string{testDSServiceIPv4}
 			if helpers.DualStackSupported() {
 				services = append(services, testDSServiceIPv6)
@@ -1851,7 +1853,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			}
 		})
 
-		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithKubeProxy), "IPv6 Connectivity", func() {
+		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithoutKubeProxyReplacement), "IPv6 Connectivity", func() {
 			testDSIPv6 := "fd03::310"
 
 			BeforeAll(func() {
@@ -1877,7 +1879,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 		})
 
 		SkipContextIf(func() bool {
-			return helpers.RunsWithoutKubeProxy() || helpers.GetCurrentIntegration() != ""
+			return helpers.RunsWithKubeProxyReplacement() || helpers.GetCurrentIntegration() != ""
 		}, "IPv6 masquerading", func() {
 			var (
 				k8s2NodeIP      string
@@ -1926,7 +1928,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			})
 		})
 
-		SkipContextIf(helpers.RunsWithoutKubeProxy, "Tests NodePort (kube-proxy)", func() {
+		SkipContextIf(helpers.RunsWithKubeProxyReplacement, "Tests NodePort (kube-proxy)", func() {
 			SkipItIf(helpers.DoesNotRunOnNetNextOr419Kernel, "with IPSec and externalTrafficPolicy=Local", func() {
 				deploymentManager.SetKubectl(kubectl)
 				deploymentManager.Deploy(helpers.CiliumNamespace, IPSecSecret)
@@ -1963,11 +1965,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			})
 		})
 
-		// IPv6 tests do not work on Integrations like GKE as we don't have IPv6
-		// addresses assigned to nodes in those environments.
-		SkipContextIf(manualIPv6TestingNotRequired(func() bool {
-			return helpers.RunsWithKubeProxy() || helpers.GetCurrentIntegration() != ""
-		}), "Tests IPv6 NodePort Services", func() {
+		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithoutKubeProxyReplacement), "Tests IPv6 NodePort Services", func() {
 			var (
 				testDSIPv6 string = "fd03::310"
 				data       v1.Service
@@ -2127,7 +2125,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			})
 		})
 
-		SkipContextIf(helpers.RunsWithoutKubeProxy, "with L7 policy", func() {
+		SkipContextIf(helpers.RunsWithKubeProxyReplacement, "with L7 policy", func() {
 			AfterAll(func() {
 				// Explicitly ignore result of deletion of resources to avoid incomplete
 				// teardown if any step fails.
@@ -2156,7 +2154,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 		SkipContextIf(
 			func() bool {
 				return helpers.DoesNotRunOnNetNextOr419Kernel() ||
-					helpers.RunsWithKubeProxy()
+					helpers.RunsWithoutKubeProxyReplacement()
 			},
 			"Tests NodePort BPF", func() {
 
