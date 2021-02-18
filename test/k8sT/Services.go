@@ -1029,10 +1029,14 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 			serviceNameIPv4 := "test-nodeport"
 			serviceNameIPv6 := "test-nodeport-ipv6"
 
+			ciliumPod, err := kubectl.GetCiliumPodOnNode(helpers.K8s1)
+			ExpectWithOffset(1, err).Should(BeNil(), "Cannot get cilium pod on k8s1")
+			ipv6Enabled := kubectl.HasIPv6(ciliumPod)
+
 			err = kubectl.Get(helpers.DefaultNamespace, fmt.Sprintf("service %s", serviceNameIPv4)).Unmarshal(&data)
 			ExpectWithOffset(1, err).Should(BeNil(), "Can not retrieve service %q", serviceNameIPv4)
 
-			if helpers.DualStackSupported() {
+			if helpers.DualStackSupported() && ipv6Enabled {
 				err = kubectl.Get(helpers.DefaultNamespace, fmt.Sprintf("service %s", serviceNameIPv6)).Unmarshal(&v6Data)
 				ExpectWithOffset(1, err).Should(BeNil(), "Can not retrieve service %q", serviceNameIPv6)
 			}
@@ -1055,7 +1059,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 				getTFTPLink("::ffff:"+k8s2IP, data.Spec.Ports[1].NodePort),
 			}
 
-			if helpers.DualStackSupported() {
+			if helpers.DualStackSupported() && ipv6Enabled {
 				testURLsFromPods = append(testURLsFromPods,
 					getHTTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[0].Port),
 					getTFTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[1].Port),
@@ -1092,7 +1096,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 				getTFTPLink("::ffff:"+k8s2IP, data.Spec.Ports[1].NodePort),
 			}
 
-			if helpers.DualStackSupported() {
+			if helpers.DualStackSupported() && ipv6Enabled {
 				testURLsFromHosts = append(testURLsFromHosts,
 					getHTTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[0].Port),
 					getTFTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[1].Port),
@@ -1114,7 +1118,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 					getTFTPLink(secondaryK8s2IPv4, data.Spec.Ports[1].NodePort),
 				)
 
-				if helpers.DualStackSupported() {
+				if helpers.DualStackSupported() && ipv6Enabled {
 					testURLsFromHosts = append(testURLsFromHosts,
 						getHTTPLink(secondaryK8s1IPv6, v6Data.Spec.Ports[0].NodePort),
 						getTFTPLink(secondaryK8s1IPv6, v6Data.Spec.Ports[1].NodePort),
@@ -1540,6 +1544,10 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 				localSvc, k8s2LocalSvc string
 			}
 
+			ciliumPodK8s2, err := kubectl.GetCiliumPodOnNode(helpers.K8s2)
+			ExpectWithOffset(1, err).Should(BeNil(), "Cannot get cilium pod on k8s2")
+			ipv6Enabled := kubectl.HasIPv6(ciliumPodK8s2)
+
 			services := []nodeInfo{
 				{
 					k8s1IP,
@@ -1548,7 +1556,7 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 					localNodePortK8s2SvcIpv4,
 				},
 			}
-			if helpers.DualStackSupported() {
+			if helpers.DualStackSupported() && ipv6Enabled {
 				services = append(services, nodeInfo{
 					primaryK8s1IPv6,
 					primaryK8s2IPv6,
@@ -1563,9 +1571,6 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 				ExpectWithOffset(1, err).Should(BeNil(), "Cannot retrieve service %s", node.localSvc)
 
 				count := 10
-
-				ciliumPodK8s2, err := kubectl.GetCiliumPodOnNode(helpers.K8s2)
-				ExpectWithOffset(1, err).Should(BeNil(), "Cannot get cilium pod on k8s2")
 
 				if helpers.ExistNodeWithoutCilium() {
 					httpURL = getHTTPLink(node.node1IP, data.Spec.Ports[0].NodePort)
@@ -1930,14 +1935,27 @@ Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, helpers.DualStackSupp
 
 		SkipContextIf(helpers.RunsWithoutKubeProxy, "Tests NodePort (kube-proxy)", func() {
 			options := make(map[string]string)
+			fullIPv6Support := versioncheck.MustCompile(">=1.20.0")
 
 			BeforeAll(func() {
 				options["kubeProxyReplacement"] = "disabled"
+				// Full IPv4/IPv6 dual stack support requires kube-proxy 1.20.
+				k8sVersion := versioncheck.MustVersion(helpers.GetCurrentK8SEnv())
+				if !fullIPv6Support(k8sVersion) {
+					options["ipv6.enabled"] = "false"
+					_ = kubectl.Delete(demoYAMLDualStack)
+				}
 				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, options)
 			})
 
 			AfterAll(func() {
 				DeployCiliumAndDNS(kubectl, ciliumFilename)
+
+				k8sVersion := versioncheck.MustVersion(helpers.GetCurrentK8SEnv())
+				if helpers.DualStackSupported() && !fullIPv6Support(k8sVersion) {
+					res := kubectl.ApplyDefault(demoYAMLDualStack)
+					Expect(res).Should(helpers.CMDSuccess(), "Unable to apply %s", demoYAMLDualStack)
+				}
 			})
 
 			It("", func() {

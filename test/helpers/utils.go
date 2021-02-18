@@ -630,6 +630,16 @@ func (kub *Kubectl) HasBPFNodePort(pod string) bool {
 	return strings.Contains(lines[0], "true")
 }
 
+// HasIPv6 returns true if the given Cilium pod has IPv6 enabled.
+func (kub *Kubectl) HasIPv6(pod string) bool {
+	status := kub.CiliumExecContext(context.TODO(), pod,
+		"cilium status -o jsonpath='{.ipam.ipv6}'")
+	status.ExpectSuccess("Failed to get status: %s", status.OutputPrettyPrint())
+	lines := status.ByLines()
+	Expect(len(lines)).ShouldNot(Equal(0), "Failed to get IPv6 status")
+	return !strings.Contains(lines[0], "null")
+}
+
 // GetNodeWithoutCilium returns a name of a node which does not run cilium.
 func GetNodeWithoutCilium() string {
 	return os.Getenv("NO_CILIUM_ON_NODE")
