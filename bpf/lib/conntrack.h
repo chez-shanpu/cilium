@@ -408,11 +408,12 @@ static __always_inline int ct_lookup6(const void *map,
 			case ICMPV6_ECHO_REPLY:
 				tuple->sport = identifier;
 				break;
-
 			case ICMPV6_ECHO_REQUEST:
 				tuple->dport = identifier;
 				/* fall through */
 			default:
+				/* convert from unsigned char to unsigned short considering byteorder(little-endian) */
+				tuple->sport = (__u16)(type << 8);
 				action = ACTION_CREATE;
 				break;
 			}
@@ -624,7 +625,6 @@ static __always_inline int ct_lookup4(const void *map,
 			case ICMP_PARAMETERPROB:
 				tuple->flags |= TUPLE_F_RELATED;
 				break;
-
 			case ICMP_ECHOREPLY:
 				tuple->sport = identifier;
 				break;
@@ -632,6 +632,8 @@ static __always_inline int ct_lookup4(const void *map,
 				tuple->dport = identifier;
 				/* fall through */
 			default:
+				/* convert from unsigned char to unsigned short considering byteorder(little-endian) */
+				tuple->sport = (__u16)(type << 8);
 				action = ACTION_CREATE;
 				break;
 			}
