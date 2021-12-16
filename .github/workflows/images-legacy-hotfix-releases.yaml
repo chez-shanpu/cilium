@@ -78,7 +78,7 @@ jobs:
 
       # Upload artifact digests
       - name: Upload artifact digests
-        uses: actions/upload-artifact@e448a9b857ee2131e752b06002bf0e093c65e571
+        uses: actions/upload-artifact@82c141cc518b40d92cc801eee768e7aafc9c2fa2
         with:
           name: image-digest ${{ matrix.name }}
           path: image-digest
