@@ -16,7 +16,7 @@ jobs:
     name: Lint image build logic
     runs-on: ubuntu-18.04
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3.1.0
       - uses: docker://docker.io/cilium/image-maker:bc81755ec8f6c5afcb10a416cef73f99a35fee2c
         name: Run make lint
         with:
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-18.04
     needs: lint
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v3.1.0
       - uses: docker://docker.io/cilium/image-maker:bc81755ec8f6c5afcb10a416cef73f99a35fee2c
         name: Register binfmt from multi-platform builds
         with:
