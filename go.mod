@@ -60,7 +60,7 @@ require (
 	github.com/osrg/gobgp/v3 v3.3.0
 	github.com/pmezard/go-difflib v1.0.0
 	github.com/prometheus/client_golang v1.12.2
-	github.com/prometheus/client_model v0.2.1-0.20210607210712-147c58e9608a
+	github.com/prometheus/client_model v0.3.0
 	github.com/prometheus/procfs v0.7.3
 	github.com/russross/blackfriday/v2 v2.1.0
 	github.com/sasha-s/go-deadlock v0.3.1
